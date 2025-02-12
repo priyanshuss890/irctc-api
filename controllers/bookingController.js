@@ -1,42 +1,18 @@
-const pool = require('../config/db');
+const { bookSeats } = require('../models/bookingModel');
 
-const bookSeats = async (userId, trainId, seats) => {
-    const connection = await pool.getConnection();
+const bookSeat = async (req, res) => {
     try {
-        await connection.beginTransaction();
+        const { trainId, seats } = req.body;
+        const bookingId = await bookSeats(req.user.id, trainId, seats);
 
-        // Lock the train row for update
-        const [train] = await connection.query(
-            'SELECT available_seats FROM trains WHERE id = ? FOR UPDATE',
-            [trainId]
-        );
-
-        if (train[0].available_seats < seats) {
-            await connection.rollback();
-            return null; // Not enough seats
+        if (!bookingId) {
+            return res.status(400).json({ error: 'Not enough seats available' });
         }
 
-        // Update available seats
-        await connection.query(
-            'UPDATE trains SET available_seats = available_seats - ? WHERE id = ?',
-            [seats, trainId]
-        );
-
-        // Create booking
-        const [result] = await connection.query(
-            'INSERT INTO bookings (user_id, train_id, seats_booked) VALUES (?, ?, ?)',
-            [userId, trainId, seats]
-        );
-
-        await connection.commit();
-        return result.insertId;
-
+        res.status(201).json({ bookingId });
     } catch (err) {
-        await connection.rollback();
-        throw err;
-    } finally {
-        connection.release();
+        res.status(500).send('Booking failed');
     }
 };
 
-module.exports = { bookSeats };
+module.exports = { bookSeat };
